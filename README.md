@@ -316,4 +316,4 @@ slightly off. A five-minute question in discovery settles it.
 
 ---
 
-Prepared by EIAAW Solutions Sdn Bhd. Confidential — not for distribution.
+Prepared by Claritas Consulting (asia) Sdn Bhd. Confidential — not for distribution.

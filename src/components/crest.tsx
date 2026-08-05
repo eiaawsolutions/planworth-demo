@@ -2,10 +2,10 @@
  * A geometric reduction of the crest on slide 1 of the brief — a shield inside
  * outspread wings, drawn as gold hairlines.
  *
- * Deliberately abstract rather than a traced copy: this is EIAAW's rendering of
- * the motif for a demo, and passing off a facsimile of a client's actual mark
- * would be the wrong call. Stroke-only, matching the deck's line treatment, and
- * no gold fills anywhere.
+ * Deliberately abstract rather than a traced copy: this is Claritas Consulting's
+ * rendering of the motif for a demo, and passing off a facsimile of a client's
+ * actual mark would be the wrong call. Stroke-only, matching the deck's line
+ * treatment, and no gold fills anywhere.
  */
 export function Crest({
   size = 96,

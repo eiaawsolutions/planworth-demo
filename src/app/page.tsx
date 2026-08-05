@@ -123,9 +123,10 @@ export default function OverviewPage() {
               </p>
               <p className="mt-2.5 text-[12px] leading-relaxed text-muted-soft">
                 The three figures above are Planworth&rsquo;s own published
-                claims, reproduced from the brief. EIAAW has not independently
-                verified them, and none of the data in this demo is derived from
-                them — see the note on what is real below.
+                claims, reproduced from the brief. Claritas Consulting (asia)
+                Sdn Bhd has not independently verified them, and none of the
+                data in this demo is derived from them — see the note on what is
+                real below.
               </p>
             </div>
           </div>

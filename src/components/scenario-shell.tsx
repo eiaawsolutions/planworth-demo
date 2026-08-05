@@ -77,7 +77,7 @@ export function SiteFooter() {
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="max-w-xl">
             <p className="text-[12px] leading-relaxed text-muted">
-              Prepared by <strong className="font-semibold text-navy">EIAAW Solutions Sdn Bhd</strong>{" "}
+              Prepared by <strong className="font-semibold text-navy">Claritas Consulting (asia) Sdn Bhd</strong>{" "}
               as a working preview of the Intelligent Ecosystem brief for Planworth
               Global Factoring Sdn Bhd.
             </p>

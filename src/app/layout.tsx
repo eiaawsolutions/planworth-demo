@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   // Client-facing prospect demo — never index it.
   robots: "noindex, nofollow",
   applicationName: "Planworth Intelligent Ecosystem",
-  authors: [{ name: "EIAAW Solutions Sdn Bhd" }],
+  authors: [{ name: "Claritas Consulting (asia) Sdn Bhd" }],
 };
 
 export const viewport: Viewport = {
