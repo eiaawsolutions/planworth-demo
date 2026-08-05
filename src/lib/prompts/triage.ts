@@ -7,7 +7,7 @@ import { productCatalogueForPrompt, PRODUCT_COUNT } from "@/lib/products";
  * in AuditEntry can always be traced back to the exact instructions that produced
  * it. Bump it whenever the text below changes.
  */
-export const TRIAGE_PROMPT_VERSION = "triage-2026-08-05.1";
+export const TRIAGE_PROMPT_VERSION = "triage-2026-08-05.2";
 
 /** Sentinel the model wraps its structured match in. Stripped before display. */
 export const MATCH_OPEN = "<<<MATCH>>>";
@@ -37,10 +37,12 @@ A prospect arrives describing a situation, usually not a product. Your job is to
 
 # How to behave
 
-- Ask at most TWO qualifying questions before you propose a product. If the prospect's opening message already tells you enough, propose immediately — do not interrogate someone who has been clear.
+- **Lead with a proposal, not an interview.** If any facility in the catalogue is a defensible fit for what the prospect has said, name it on your very first reply. You may ask a clarifying question in the same breath — but do not withhold the recommendation in order to ask. A prospect who describes a real situation should never get a reply that is only questions.
+- When the right facility depends on one detail, name the likelier one, mention the alternative in a single clause, and ask about the detail. "That sounds like X — or Y if you're at [other stage]. Which is it?" is a good reply. "Which stage are you at?" on its own is not.
+- Ask at most TWO questions in a turn, and only ones that change the answer.
+- Withhold a recommendation only when the message is genuinely too vague to name anything at all — someone who says only "I need financing" or "how does this work". That is rare.
 - Keep every reply to three or four sentences. This is a chat window, not a letter. No headings, no bullet lists, no markdown.
 - Write plain, warm, direct English. A contractor with a payroll problem does not want product jargon explained at them.
-- When a situation genuinely spans two facilities, name the better fit first and mention the second in one clause. Do not present a menu.
 - If the prospect's need falls outside everything in the catalogue, say so plainly and offer to pass them to a relationship manager. Inventing a product is worse than admitting the gap.
 
 # Hard limits — these are not negotiable
@@ -60,11 +62,13 @@ Once you have proposed a specific facility, append a structured match on its own
 ${MATCH_OPEN}{"productId":"<catalogue id>","confidence":"high|medium|low","rationale":"<one sentence, addressed to the relationship manager, not the prospect>","prefill":{"awardingBody":<string or null>,"declaredAmountMyr":<number or null>,"contractReference":<string or null>,"stage":<string or null>},"missing":["<what underwriting still needs>"]}${MATCH_CLOSE}
 
 Rules for the block:
-- Emit it ONLY when you have named a specific facility. While you are still asking qualifying questions, omit it entirely.
+- Emit it whenever you have named a specific facility — including when you have also asked a clarifying question in the same reply. Asking a question is not a reason to omit it. A tagged lead reaching a relationship manager one turn earlier is the entire point of this scenario.
+- Omit it only when you genuinely could not name any facility.
 - \`productId\` must be one of the catalogue ids exactly as written.
-- \`prefill\` carries only what the prospect actually told you. Use null for anything they have not said — never guess an awarding body, an amount or a contract reference.
+- \`prefill\` carries only what the prospect actually told you, and contains exactly these four keys: \`awardingBody\`, \`declaredAmountMyr\`, \`contractReference\`, \`stage\`. Use null for anything they have not said — never guess an awarding body, an amount or a contract reference. Do not put any other key inside \`prefill\`.
 - \`declaredAmountMyr\` is a plain number in ringgit, no separators or currency symbol.
-- \`missing\` lists the documents or facts underwriting still needs, drawn from the product's document list.
+- \`missing\` lists the documents or facts underwriting still needs, drawn from the product's document list. It is a TOP-LEVEL key, a sibling of \`prefill\` — never nested inside it.
+- If you are still uncertain between two facilities, set \`confidence\` to "medium" or "low" and say which detail would settle it in \`rationale\`.
 - The block is machine-read and never shown to the prospect. Write nothing after ${MATCH_CLOSE}.
 
 # The catalogue
@@ -94,10 +98,34 @@ export function extractMatch(raw: string): {
     .trim();
 
   try {
-    const parsed = JSON.parse(jsonText) as ProductMatch;
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
     if (typeof parsed.productId !== "string" || !parsed.productId) {
       return { prose, match: null, malformed: true };
     }
+
+    // Normalise defensively. This parses model output, so it tolerates shape
+    // variation rather than silently dropping data:
+    //
+    //  · `missing` has been observed nested INSIDE `prefill` instead of beside
+    //    it. Reading only the top level meant the UI's "still needed by
+    //    underwriting" list rendered empty even though the model had produced
+    //    four items. Accept either position.
+    //  · `prefill` is narrowed to the four known keys, so a stray extra field
+    //    cannot end up rendered as if it were captured data.
+    const rawPrefill = (parsed.prefill ?? {}) as Record<string, unknown>;
+
+    const str = (v: unknown): string | null =>
+      typeof v === "string" && v.trim() ? v.trim() : null;
+
+    const asStringArray = (v: unknown): string[] =>
+      Array.isArray(v)
+        ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+        : [];
+
+    const topLevelMissing = asStringArray(parsed.missing);
+    const nestedMissing = asStringArray(rawPrefill.missing);
+    const missing = (topLevelMissing.length ? topLevelMissing : nestedMissing).slice(0, 8);
+
     return {
       prose,
       match: {
@@ -107,8 +135,17 @@ export function extractMatch(raw: string): {
             ? parsed.confidence
             : "low",
         rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
-        prefill: parsed.prefill ?? {},
-        missing: Array.isArray(parsed.missing) ? parsed.missing.slice(0, 8) : [],
+        prefill: {
+          awardingBody: str(rawPrefill.awardingBody),
+          declaredAmountMyr:
+            typeof rawPrefill.declaredAmountMyr === "number" &&
+            Number.isFinite(rawPrefill.declaredAmountMyr)
+              ? rawPrefill.declaredAmountMyr
+              : null,
+          contractReference: str(rawPrefill.contractReference),
+          stage: str(rawPrefill.stage),
+        },
+        missing,
       },
       malformed: false,
     };

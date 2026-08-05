@@ -15,7 +15,7 @@ This app makes them clickable — and is explicit about which of them are real.
 simulations. Every page says which, and why.**
 
 | # | Scenario | Route | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | Hyper-Personalised Omni-Channel Engagement | `/scenario/engagement` | Simulated |
 | 2 | Conversational AI for Instant Solution Matching | `/scenario/triage` | **Live Claude** |
 | 3 | Intelligent Document Processing | `/scenario/idp` | **Live Claude** |
@@ -93,34 +93,54 @@ from a clean digital PDF's text layer would not demonstrate that.
 ## Verifying it
 
 ```bash
-npm run eval        # the harness described below
+npm run eval                                  # the harness described below
+npm run eval:inspect "some opener substring"   # full replies for flagged cases
 npm run lint
 npm run typecheck
 npm run build
 ```
 
-`npm run eval` has two halves:
+`npm run eval` has two halves.
 
-**Part A — deterministic, no key, no cost.** 56 checks over money handling, the
-product catalogue, the reconciliation rules, all three simulations, and WCAG
-contrast for every colour pair actually used. This is the half that catches the
-expensive bugs: a wrong *"Anomaly free"* verdict, a scorecard whose weights stop
-summing to 100, a palette tweak that drops text below 4.5:1.
+**Part A — deterministic, no key, no cost. 62 checks.** Money handling, the
+product catalogue, match-block parsing, the reconciliation rules, all three
+simulations, and WCAG contrast for every colour pair actually used (read from
+`globals.css`, so a palette tweak that drops text below 4.5:1 fails a check). This
+is the half that catches the expensive bugs: a wrong *"Anomaly free"* verdict, a
+scorecard whose weights stop summing to 100.
 
-**Part B — live model, needs `ANTHROPIC_API_KEY` and spends money.** A 12-case
-triage golden set, five adversarial probes (prompt extraction, authority
+**Part B — live model, needs `ANTHROPIC_API_KEY` and spends money. 48 checks.** A
+12-case triage golden set, five adversarial probes (prompt extraction, authority
 spoofing, pricing extraction, role reset, invented product), and document
 extraction against ground truth for all five fixtures. When no key is present it
 **skips loudly** rather than passing quietly.
 
+### Last recorded full run
+
+`110 passed · 0 failed · 0 to review · 0 skipped` on `claude-opus-5`.
+
+- All 12 golden-set openers matched an acceptable product on the **first turn**.
+- All 5 adversarial probes held: no prompt leakage, no approval or pre-approval
+  claim, no rate quoted, no role reset, no invented product.
+- All 5 document fixtures extracted correctly on every field — including the
+  degraded scan, which read `742,500.00` and was **not** silently corrected to the
+  declared `724,500.00`, and both buyer-issued documents, which got issuer and
+  counterparty the right way round.
+
 Part B calls the model directly, so it measures prompt quality rather than
-transport. The routes' sentinel stripping and rate limiting are not covered by it.
+transport. The routes' sentinel stripping and rate limiting are **not** covered by
+it — that gap is real and worth closing with an integration test against a running
+server.
+
+When the harness flags something as *"needs a human read"*, use
+`npm run eval:inspect "<substring>"` to print the full reply and the structured
+hand-off. Judging a warning from a 120-character truncation is guessing.
 
 ---
 
 ## How it is put together
 
-```
+```text
 src/
   app/
     page.tsx                    overview — slides 1, 2, 3, 11, 13
@@ -216,12 +236,29 @@ Stated here rather than discovered later. `/architecture` carries the full list.
   deployment needs that assessed and, if required, region-pinned inference.
 - **No human approval queue.** The scenarios show what would be routed for
   sign-off; the queue that holds it does not exist here.
-- **Part B of the eval harness has not been executed.** It was written but never
-  run, because no Anthropic credential was available in the build environment. The
-  two live scenarios are therefore **unproven end-to-end** — run `npm run eval`
-  with a key before showing this to anyone.
+- **The routes themselves are not integration-tested.** Part B exercises the
+  prompts by calling the model directly. The SSE sentinel stripping in
+  `/api/concierge`, the rate limiter, and the audit-before-inference guard are
+  covered by reading the code, not by a test against a running server.
 - **`package.json#prisma` deprecation warning.** Prisma 6 accepts the `seed` hook
   there; Prisma 7 will want `prisma.config.ts`. Harmless until that upgrade.
+- **No visual regression coverage.** Layout was verified structurally (every wide
+  element sits inside an `overflow-x-auto` container) but never screenshotted at
+  mobile, tablet and desktop widths.
+
+### One thing to raise with Planworth
+
+The brief's slide 6 shows *"I am bidding on a new government job"* resolving to
+**Pre-Financing or a Letter of Undertaking**. Run live, the concierge answers
+**Tender / Bid Bond** — which is arguably more correct, because at genuine
+bid-submission stage a bid bond is what you need to submit at all; pre-financing
+and a letter of undertaking both sit closer to award. The golden set accepts all
+three.
+
+This is worth clarifying rather than papering over: if "bidding" in the brief means
+*pursuing or newly awarded*, the deck is right and the catalogue's trigger signals
+should say so. If it means *at tender submission*, the deck's own example is
+slightly off. A five-minute question in discovery settles it.
 
 ---
 

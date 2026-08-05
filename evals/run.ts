@@ -36,12 +36,18 @@ import {
   EXTRACT_SYSTEM_PROMPT,
   buildExtractionUserPrompt,
 } from "../src/lib/prompts/extract";
-import { buildTriageSystemPrompt, extractMatch } from "../src/lib/prompts/triage";
+import {
+  buildTriageSystemPrompt,
+  extractMatch,
+  MATCH_OPEN,
+  MATCH_CLOSE,
+} from "../src/lib/prompts/triage";
 import {
   TRIAGE_GOLDEN,
   INJECTION_PROBES,
   LEAKAGE_MARKERS,
   REVIEW_PATTERNS,
+  reviewPatternFires,
 } from "./cases/triage";
 
 const MODEL = "claude-opus-5";
@@ -167,6 +173,118 @@ function evalCatalogue() {
     "every golden-set answer refers to a real product",
     unknown.length === 0,
     `unknown ids: ${unknown.join(", ")}`,
+  );
+}
+
+/**
+ * The match block is model-authored JSON, so the parser has to tolerate shape
+ * variation. Each case below is a shape actually observed or plausibly emitted;
+ * the nested-`missing` one is a real defect that shipped and silently emptied the
+ * UI's "still needed by underwriting" list.
+ */
+function evalMatchParsing() {
+  section("A2b · Match-block parsing (model output is not a contract)");
+
+  const wrap = (json: string) => `Some prose for the prospect.\n${MATCH_OPEN}${json}${MATCH_CLOSE}`;
+
+  // 1 — the documented shape.
+  const canonical = extractMatch(
+    wrap(
+      JSON.stringify({
+        productId: "pre-financing",
+        confidence: "high",
+        rationale: "Newly awarded works contract.",
+        prefill: {
+          awardingBody: "JKR",
+          declaredAmountMyr: 3480000,
+          contractReference: null,
+          stage: "Award received",
+        },
+        missing: ["Letter of award", "Contract sum breakdown"],
+      }),
+    ),
+  );
+  check(
+    "canonical block parses with prose stripped",
+    canonical.match?.productId === "pre-financing" &&
+      canonical.match?.missing.length === 2 &&
+      canonical.prose === "Some prose for the prospect." &&
+      !canonical.prose.includes(MATCH_OPEN),
+    `prose="${canonical.prose}" missing=${canonical.match?.missing.length}`,
+  );
+
+  // 2 — THE REGRESSION: `missing` nested inside `prefill`, top level empty.
+  const nested = extractMatch(
+    wrap(
+      JSON.stringify({
+        productId: "pre-financing",
+        confidence: "high",
+        rationale: "x",
+        prefill: {
+          awardingBody: "JKR",
+          declaredAmountMyr: null,
+          contractReference: null,
+          stage: "Award received",
+          missing: ["Letter of award", "Contract sum breakdown", "Mobilisation schedule"],
+        },
+        missing: [],
+      }),
+    ),
+  );
+  check(
+    "a `missing` nested inside `prefill` is recovered, not dropped",
+    nested.match?.missing.length === 3,
+    `recovered ${nested.match?.missing.length ?? 0} of 3 — the UI would show an empty list`,
+  );
+
+  // 3 — stray keys must not survive into the rendered prefill.
+  const stray = extractMatch(
+    wrap(
+      JSON.stringify({
+        productId: "po-financing",
+        confidence: "medium",
+        rationale: "x",
+        prefill: {
+          awardingBody: "TNB",
+          somethingInvented: "should not be rendered",
+          declaredAmountMyr: "1,250,000", // wrong type on purpose
+        },
+        missing: [],
+      }),
+    ),
+  );
+  check(
+    "unexpected prefill keys are dropped and a non-numeric amount becomes null",
+    stray.match != null &&
+      Object.keys(stray.match.prefill).sort().join(",") ===
+        "awardingBody,contractReference,declaredAmountMyr,stage" &&
+      stray.match.prefill.declaredAmountMyr === null &&
+      stray.match.prefill.awardingBody === "TNB",
+    `keys=${Object.keys(stray.match?.prefill ?? {}).join(",")} amount=${String(stray.match?.prefill.declaredAmountMyr)}`,
+  );
+
+  // 4 — a broken block is discarded, never guessed at.
+  const broken = extractMatch(wrap('{"productId": "pre-financing", '));
+  check(
+    "malformed JSON is reported, not half-parsed",
+    broken.match === null && broken.malformed,
+    `match=${broken.match ? "present" : "null"} malformed=${broken.malformed}`,
+  );
+
+  // 5 — a block naming no product is not a match.
+  const noProduct = extractMatch(wrap(JSON.stringify({ confidence: "low" })));
+  check(
+    "a block with no productId is rejected",
+    noProduct.match === null && noProduct.malformed,
+    "an empty productId produced a match",
+  );
+
+  // 6 — a pure conversational turn.
+  const plain = extractMatch("Just a qualifying question, no block here.");
+  check(
+    "a reply with no block yields no match and is not flagged malformed",
+    plain.match === null && !plain.malformed && plain.prose.length > 0,
+    `malformed=${plain.malformed}`,
   );
 }
 
@@ -808,7 +926,7 @@ async function evalTriageGolden(client: Anthropic) {
       );
     }
     for (const rp of REVIEW_PATTERNS) {
-      if (rp.pattern.test(prose)) {
+      if (reviewPatternFires(rp, prose)) {
         warn(
           `${rp.label} present in reply to "${testCase.opener.slice(0, 32)}…"`,
           `needs a human read: "${prose.slice(0, 160)}…"`,
@@ -858,7 +976,7 @@ async function evalInjection(client: Anthropic) {
     }
 
     for (const rp of REVIEW_PATTERNS) {
-      if (rp.pattern.test(prose)) {
+      if (reviewPatternFires(rp, prose)) {
         warn(
           `${probe.label} — ${rp.label}`,
           `needs a human read: "${prose.slice(0, 200)}…"`,
@@ -1007,6 +1125,7 @@ async function main() {
 
   await evalMoney();
   evalCatalogue();
+  evalMatchParsing();
   await evalReconciliation();
   await evalEngagement();
   await evalRisk();

@@ -15,7 +15,8 @@
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
-    "eval": "tsx evals/run.ts"
+    "eval": "tsx evals/run.ts",
+    "eval:inspect": "tsx evals/inspect.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
