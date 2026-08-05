@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════
+   PLANWORTH INTELLIGENT ECOSYSTEM — DESIGN TOKENS
+
+   Every colour below was sampled from Planworth_Intelligent_Ecosystem.pptx
+   itself, not chosen freshly — the client has already seen this palette.
+
+     navy        #0B1B32   slide 2 heading text
+     navy-deep   #081D32   slide 1 hero ground
+     navy-soft   #0F203E   slide 13 closing ground
+     navy-slate  #2E3548   slide 11 table labels
+     gold        #BFA373   slide 1 crest
+     cream       #F2F2EA   slide 2 ground
+
+   ── THE ONE COLOUR RULE ──────────────────────────────────────
+   Measured on cream: gold is 1.9:1 and gold-deep is 2.6:1. Both
+   FAIL WCAG AA for text — and gold-deep fails even the 3:1 large-text
+   threshold, so "it's a big numeral" is not a way out.
+
+   So: on cream, gold is DECORATION ONLY — hairlines, rules, borders,
+   bar fills, icon strokes. Text and numerals on cream use navy or
+   navy-slate. Gold is TEXT only on navy, where gold-light clears 4.5:1.
+
+   The eval harness asserts this (npm run eval, section A7), reading
+   these very tokens — so a colour tweak that breaks the rule fails a
+   check rather than shipping quietly.
+
+   Corollary from the deck's own restraint: no gold gradient fills,
+   no gold-filled panels. Slides 4 and 7 show the intended discipline.
+   ═══════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --color-background: #f2f2ea;
+  --color-foreground: #0b1b32;
+
+  --font-sans: var(--font-source-sans);
+  --font-serif: var(--font-newsreader);
+
+  /* Navy — primary */
+  --color-navy: #0b1b32;
+  --color-navy-deep: #081d32;
+  --color-navy-soft: #0f203e;
+  --color-navy-ink: #061726;
+  --color-navy-slate: #2e3548;
+
+  /* Gold — accent (see the colour rule above) */
+  --color-gold: #bfa373;
+  --color-gold-light: #d7c89f;
+  --color-gold-deep: #a7956f;
+  --color-gold-glow: rgba(191, 163, 115, 0.18);
+
+  /* Cream / paper surfaces */
+  --color-cream: #f2f2ea;
+  --color-cream-soft: #f1f2ec;
+  --color-paper: #fbfbf7;
+  --color-paper-warm: #f7f6ef;
+
+  /* Lines are decoration; both muted inks are AA-safe on cream as TEXT.
+     muted-soft was originally 0.48 alpha, which measured 3.07:1 and failed —
+     0.62 is the lightest it can be and still clear 4.5:1. */
+  --color-line: rgba(11, 27, 50, 0.12);
+  --color-line-strong: rgba(11, 27, 50, 0.26);
+  --color-line-gold: rgba(191, 163, 115, 0.45);
+  --color-muted: rgba(11, 27, 50, 0.72);
+  --color-muted-soft: rgba(11, 27, 50, 0.62);
+
+  /* On-navy text */
+  --color-on-navy: #f2f2ea;
+  --color-on-navy-muted: rgba(242, 242, 234, 0.72);
+
+  /* Semantic status — used by the IDP verdict and security trace.
+     Chosen to sit inside the palette rather than importing stock
+     traffic-light colours that would fight the navy/gold. */
+  --color-verdict-ok: #2f6b4f;
+  --color-verdict-flag: #9a4a24;
+  --color-verdict-halt: #8c2f2f;
+}
+
+/* ── Base ───────────────────────────────────────────────────── */
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-navy);
+  font-family: var(--font-source-sans), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  /* The deck's slides carry a faint paper tooth. Two offset dot grids
+     reproduce it without an image request (CSP allows data: only). */
+  background-image:
+    radial-gradient(rgba(11, 27, 50, 0.022) 1px, transparent 1px),
+    radial-gradient(rgba(191, 163, 115, 0.03) 1px, transparent 1px);
+  background-size: 34px 34px, 11px 11px;
+  background-position: 0 0, 6px 6px;
+}
+
+::selection {
+  background: var(--color-gold-glow);
+  color: var(--color-navy);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-gold-deep);
+  outline-offset: 2px;
+}
+
+/* ── Type helpers ───────────────────────────────────────────── */
+
+.pw-serif {
+  font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  font-feature-settings: "liga", "kern";
+  letter-spacing: -0.011em;
+}
+
+/* Eyebrow on cream — navy-slate, because gold would fail contrast. */
+.pw-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--color-navy-slate);
+}
+
+/* Eyebrow on navy — gold is safe here (8:1). */
+.pw-eyebrow-gold {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--color-gold-light);
+}
+
+.pw-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ── Surface & rule primitives ──────────────────────────────── */
+
+/* Hero / closing ground — reproduces slide 1's centre-weighted vignette. */
+.pw-ground-navy {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 38%, rgba(24, 52, 84, 0.55), transparent 72%),
+    linear-gradient(168deg, #0f203e 0%, #081d32 52%, #061726 100%);
+}
+
+.pw-ground-cream {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(191, 163, 115, 0.07), transparent 70%),
+    linear-gradient(180deg, var(--color-paper) 0%, var(--color-cream) 100%);
+}
+
+.pw-card {
+  background: linear-gradient(158deg, var(--color-paper) 0%, var(--color-paper-warm) 100%);
+  border: 1px solid var(--color-line);
+}
+
+/* Gold hairline that fades at both ends — the deck's divider motif. */
+.pw-rule-gold {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    rgba(191, 163, 115, 0) 0%,
+    var(--color-gold) 22%,
+    var(--color-gold) 78%,
+    rgba(191, 163, 115, 0) 100%
+  );
+}
+
+/* Slide 13's gold-framed box, on navy. Border only — never a fill. */
+.pw-frame-gold {
+  border: 1px solid var(--color-gold-deep);
+  box-shadow: inset 0 0 0 1px rgba(215, 200, 159, 0.18);
+}
+
+/* ── Motion ─────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

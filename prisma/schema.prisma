@@ -1,0 +1,417 @@
+// Planworth Intelligent Ecosystem — demo schema.
+//
+// Every Client / Application / Document row in this database is a FICTIONAL
+// FIXTURE (`isDemoFixture` defaults to true and the seed never sets it false).
+// There are no live Planworth records here and none may be added: the EIAAW
+// lead-generation contract requires a server-side verification gate before any
+// real prospect is persisted, and this demo has no such gate.
+//
+// The model set maps onto the deck's five scenarios:
+//   Product / Application           → scenario 2 (conversational solution matching)
+//   DocumentRecord / ExtractedField → scenario 3 (intelligent document processing)
+//   CreditHistory                   → scenario 4 (dynamic credit & risk scoring)
+//   CashflowPoint / Campaign        → scenario 1 (predictive omni-channel engagement)
+//   SecurityEvent                   → scenario 5 (adaptive security)
+//   AuditEntry                      → the audit trail every scenario writes to
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Product catalogue — the grounding corpus for triage
+// ─────────────────────────────────────────────────────────────
+
+enum ProductCategory {
+  INVOICE_FINANCING
+  PO_FINANCING
+  CONTRACT_FINANCING
+  GUARANTEE
+  SUPPLY_CHAIN
+}
+
+/// One financing product. The deck states Planworth offers "over 15 distinct,
+/// complex products" without enumerating them — this catalogue is assembled
+/// from their public site and NEEDS PLANWORTH'S CONFIRMATION before the demo
+/// is presented as authoritative.
+model Product {
+  id       String          @id
+  name     String
+  category ProductCategory
+
+  /// One sentence a relationship manager would actually say.
+  shortPitch String
+  /// What the facility is for, in plain terms — fed to the model as grounding.
+  description String
+
+  /// Situations that point at this product. The triage prompt reasons over
+  /// these rather than doing keyword matching.
+  triggerSignals String[]
+  /// Documents underwriting will ask for.
+  requiredDocs String[]
+
+  typicalTenor  String
+  facilityRange String
+
+  /// True when the product only makes sense against a government / GLC award —
+  /// this is what lets "I am bidding on a new government job" resolve.
+  requiresAwardingBody Boolean @default(false)
+
+  sortOrder Int
+  isActive  Boolean @default(true)
+
+  applications Application[]
+
+  @@index([category])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Clients & applications
+// ─────────────────────────────────────────────────────────────
+
+enum ClientSegment {
+  SME
+  CORPORATE
+  GLC_VENDOR
+  GOVERNMENT_CONTRACTOR
+}
+
+/// A synthetic borrower. Names are deliberately invented.
+model Client {
+  id             String        @id @default(cuid())
+  name           String
+  registrationNo String        @unique
+  sector         String
+  segment        ClientSegment
+  geography      String        @default("Malaysia")
+
+  /// Years on Planworth's book — drives the risk-tenure factor.
+  relationshipMonths Int @default(0)
+
+  /// Current approved limit, in MYR sen to avoid float drift.
+  approvedLimitSen BigInt @default(0)
+
+  /// ALWAYS true in this project. See the header note.
+  isDemoFixture Boolean @default(true)
+
+  applications   Application[]
+  creditHistory  CreditHistory?
+  cashflowPoints CashflowPoint[]
+  campaigns      Campaign[]
+  securityEvents SecurityEvent[]
+
+  createdAt DateTime @default(now())
+
+  @@index([segment])
+}
+
+enum ApplicationStage {
+  ENQUIRY
+  QUALIFIED
+  DOCUMENTS_RECEIVED
+  UNDER_REVIEW
+  APPROVED
+  DISBURSED
+  DECLINED
+}
+
+enum LeadSource {
+  WEB_CONCIERGE
+  WHATSAPP_CAMPAIGN
+  RELATIONSHIP_MANAGER
+  SEEDED_HISTORICAL
+}
+
+/// A financing application. Rows created live by the triage concierge carry
+/// source = WEB_CONCIERGE; everything else is seeded history.
+model Application {
+  id        String @id @default(cuid())
+  reference String @unique
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+
+  stage  ApplicationStage @default(ENQUIRY)
+  source LeadSource       @default(SEEDED_HISTORICAL)
+
+  /// The applicant-declared contract / LO amount, in sen. This is the figure
+  /// the IDP scenario cross-checks extracted document values against.
+  declaredAmountSen BigInt?
+  awardingBody      String?
+  contractReference String?
+
+  /// Free-text capture of what the prospect said, for demo transparency.
+  enquiryNote String?
+
+  /// Set by the concierge when it matches a product, with its stated reasoning.
+  matchRationale String?
+
+  documents DocumentRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([stage])
+  @@index([source])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scenario 3 — Intelligent Document Processing
+// ─────────────────────────────────────────────────────────────
+
+enum DocumentKind {
+  INVOICE
+  PURCHASE_ORDER
+  PROGRESS_CLAIM
+  LETTER_OF_AWARD
+}
+
+enum ExtractionVerdict {
+  PENDING
+  ANOMALY_FREE
+  MISMATCH_FLAGGED
+  UNREADABLE
+}
+
+/// A bundled fixture document. `assetPath` points at a file in /public that
+/// ships with the repo — nothing is uploaded from a real client.
+model DocumentRecord {
+  id   String       @id @default(cuid())
+  kind DocumentKind
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  label     String
+  assetPath String
+  mimeType  String @default("application/pdf")
+
+  /// Set true on the fixture that deliberately disagrees with the CRM record,
+  /// so the anomaly path is demonstrable rather than hypothetical.
+  isDeliberateMismatch Boolean @default(false)
+
+  /// Filled by a real Claude extraction call at demo time.
+  verdict          ExtractionVerdict @default(PENDING)
+  verdictRationale String?
+  extractedAt      DateTime?
+  latencyMs        Int?
+
+  fields ExtractedField[]
+
+  createdAt DateTime @default(now())
+
+  @@index([applicationId])
+}
+
+/// One field Claude pulled out of a document, beside the CRM value it was
+/// checked against. Storing both is what makes the verdict auditable.
+model ExtractedField {
+  id String @id @default(cuid())
+
+  documentId String
+  document   DocumentRecord @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  name          String
+  extractedText String
+  crmValue      String?
+  matches       Boolean @default(true)
+  note          String?
+
+  @@index([documentId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scenario 4 — Dynamic credit & risk scoring  (SIMULATED)
+// ─────────────────────────────────────────────────────────────
+
+/// A client's OBSERVED repayment history — the inputs to the risk simulation,
+/// not its output.
+///
+/// The score, band, contributing factors and recommended limit are deliberately
+/// NOT stored: they are computed on every render by the documented weighted
+/// formula in src/lib/sim/risk.ts, so what the UI shows is visibly the result of
+/// a function rather than a number someone wrote into a table. Persisting a
+/// "score" would make a simulation look like stored inference.
+///
+/// These aggregates stand in for the deck's 40,000-transaction history, which
+/// Planworth has not provided.
+model CreditHistory {
+  id String @id @default(cuid())
+
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  transactionsObserved Int    @default(0)
+  totalDisbursedSen    BigInt @default(0)
+  onTimeSettlementPct  Int    @default(0)
+  avgDaysToSettle      Int    @default(0)
+  /// Worst single arrears event on record, in days. 0 = never late.
+  worstArrearsDays Int @default(0)
+  /// Distinct awarding bodies / buyers seen — concentration risk.
+  distinctCounterparties Int @default(0)
+  /// Disputed or written-back claims, as a share of transactions (percent).
+  disputeRatePct Int @default(0)
+
+  observedFrom DateTime
+  observedTo   DateTime
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scenario 1 — Predictive omni-channel engagement  (SIMULATED)
+// ─────────────────────────────────────────────────────────────
+
+/// One month of a client's working-capital position, in sen. The seeded series
+/// reproduces the seasonal shape on slide 5, including the Q3 trough.
+model CashflowPoint {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  monthIndex Int // 0 = Jan
+  label      String
+  netPositionSen BigInt
+
+  @@unique([clientId, monthIndex])
+  @@index([clientId])
+}
+
+enum CampaignChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+  VOICE
+}
+
+enum CampaignStatus {
+  DETECTED
+  DRAFTED
+  APPROVED
+  SENT
+  DECLINED
+}
+
+/// A campaign the engagement simulation proposes when it detects a funding gap.
+/// Nothing is actually sent — SENT is a demo state, not a delivery receipt.
+model Campaign {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  channel CampaignChannel @default(WHATSAPP)
+  status  CampaignStatus  @default(DETECTED)
+
+  /// The month the gap was detected in, and why.
+  triggerMonth     String
+  triggerRationale String
+
+  offerHeadline String
+  offerBody     String
+  offerAmountSen BigInt?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scenario 5 — Adaptive security  (SIMULATED)
+// ─────────────────────────────────────────────────────────────
+
+enum SecuritySeverity {
+  BASELINE
+  NOTICE
+  ANOMALY
+  BLOCKED
+}
+
+enum SecurityResponse {
+  NONE
+  STEP_UP_AUTH
+  API_THROTTLE
+  SESSION_LOCK
+}
+
+/// An entry in the simulated access log.
+///
+/// IMPORTANT: the deck frames this capability as behavioural biometrics on
+/// staff. This demo simulates a detection trace over seeded events and collects
+/// nothing. Do not present it as real biometric monitoring — that claim needs a
+/// PDPA assessment before any such data is gathered.
+model SecurityEvent {
+  id String @id @default(cuid())
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  actor       String
+  actorRole   String
+  action      String
+  ipAddress   String
+  geoLabel    String
+  deviceLabel String
+
+  occurredAt DateTime
+  severity   SecuritySeverity @default(BASELINE)
+  response   SecurityResponse @default(NONE)
+
+  /// Deviation from the actor's seeded baseline, 0–100, from
+  /// src/lib/sim/security.ts. Deterministic, not a learned score.
+  anomalyScore   Int     @default(0)
+  anomalyReason  String?
+  recordsTouched Int     @default(0)
+
+  sortOrder Int @default(0)
+
+  @@index([occurredAt])
+  @@index([severity])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Audit trail
+// ─────────────────────────────────────────────────────────────
+
+/// One row per AI invocation or operator action. The deck's approval-workflow
+/// narrative implies an audit trail; this is it. Digests rather than raw
+/// prompt/response text, so the log stays useful without becoming a
+/// second copy of everything the model saw.
+model AuditEntry {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  sessionId String
+  actor     String
+  scenario  String // "triage" | "idp" | "engagement" | "risk" | "security"
+  surface   String @default("") // route handler or component that wrote the row
+
+  /// "real" when a model was actually called, "simulated" for the deterministic
+  /// scenarios. Kept in the log so a reviewer can tell them apart later.
+  mode String @default("simulated")
+
+  model         String?
+  promptVersion String?
+  inputDigest   String  @default("")
+  outputDigest  String  @default("")
+
+  inputTokens  Int?
+  outputTokens Int?
+  latencyMs    Int?
+  costMicros   Int? // USD millionths, to stay integral
+
+  outcome String? // free-text summary of what happened
+  meta    Json?
+
+  @@index([sessionId])
+  @@index([scenario])
+  @@index([createdAt])
+}

@@ -1,0 +1,15 @@
+# Railway (Nixpacks) — override only the install phase.
+#
+# Use `npm install` rather than the default `npm ci`. The lockfile is authored
+# on Windows, where npm omits some Linux-only optional native deps
+# (@emnapi/*, @napi-rs/*) pulled in transitively by Tailwind/oxide + resolver
+# tooling. `npm ci` then fails on Railway's Linux builder with "Missing … from
+# lock file". `npm install` resolves the correct platform binaries at build time.
+#
+# Build and start commands are defined authoritatively in railway.json.
+
+[phases.install]
+# --include=dev forces devDependencies to install even though NODE_ENV=production
+# (Railway prunes them otherwise). @tailwindcss/postcss, prisma, typescript, tsx,
+# and eslint-config-next are all build-time-only and live in devDependencies.
+cmds = ["npm install --include=dev --production=false --no-audit --no-fund"]
