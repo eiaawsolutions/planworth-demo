@@ -86,6 +86,11 @@ export function SiteFooter() {
           <div className="flex flex-col gap-1 text-[11px] text-muted-soft md:text-right">
             <span>Two scenarios call Claude directly. Three are simulations.</span>
             <span>Each page states which, and why.</span>
+            {/* The URL is what gets forwarded, so the marking must travel with it
+                rather than living only in the repository README. */}
+            <span className="mt-1.5 font-semibold tracking-[0.14em] uppercase text-navy-slate">
+              Confidential · not for distribution
+            </span>
           </div>
         </div>
       </div>

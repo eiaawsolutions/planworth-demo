@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { tryLoad } from "@/lib/load";
 import { scenarioBySlug } from "@/lib/scenarios";
 import { isAiConfigured } from "@/lib/anthropic";
 import { formatMyrPrecise } from "@/lib/money";
 import { ScenarioShell, Panel } from "@/components/scenario-shell";
+import { DataUnavailable } from "@/components/data-unavailable";
 import {
   DocumentInspector,
   type DocumentSummary,
@@ -21,10 +23,22 @@ export default async function IdpPage() {
   const scenario = scenarioBySlug("idp");
   if (!scenario) notFound();
 
-  const rows = await prisma.documentRecord.findMany({
-    orderBy: { createdAt: "asc" },
-    include: { application: { include: { client: true } } },
-  });
+  const loaded = await tryLoad(() =>
+    prisma.documentRecord.findMany({
+      orderBy: { createdAt: "asc" },
+      include: { application: { include: { client: true } } },
+    }),
+  );
+
+  if (!loaded.ok) {
+    return (
+      <ScenarioShell scenario={scenario}>
+        <DataUnavailable reason="unreachable" what="the submitted documents and the records it reconciles them against" />
+      </ScenarioShell>
+    );
+  }
+
+  const rows = loaded.data;
 
   // BigInt cannot cross the server/client boundary — format on the server.
   const documents: DocumentSummary[] = rows.map((d) => ({

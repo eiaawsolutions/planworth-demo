@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { tryLoad } from "@/lib/load";
 import { scenarioBySlug } from "@/lib/scenarios";
 import {
   scoreEvents,
@@ -10,6 +11,7 @@ import {
   type Severity,
 } from "@/lib/sim/security";
 import { ScenarioShell, Panel } from "@/components/scenario-shell";
+import { DataUnavailable } from "@/components/data-unavailable";
 import { GoldRule, Pill, type PillTone } from "@/components/atoms";
 
 export const metadata: Metadata = {
@@ -41,18 +43,23 @@ export default async function SecurityPage() {
   const scenario = scenarioBySlug("security");
   if (!scenario) notFound();
 
-  const rows = await prisma.securityEvent.findMany({
-    orderBy: { sortOrder: "asc" },
-  });
+  const loaded = await tryLoad(() =>
+    prisma.securityEvent.findMany({ orderBy: { sortOrder: "asc" } }),
+  );
 
+  if (!loaded.ok) {
+    return (
+      <ScenarioShell scenario={scenario}>
+        <DataUnavailable reason="unreachable" what="the access log it scores" />
+      </ScenarioShell>
+    );
+  }
+
+  const rows = loaded.data;
   if (rows.length === 0) {
     return (
       <ScenarioShell scenario={scenario}>
-        <Panel>
-          <p className="text-[14px] text-muted">
-            No seeded access log found. Run <code>npm run db:seed</code>.
-          </p>
-        </Panel>
+        <DataUnavailable reason="empty" what="no access log" />
       </ScenarioShell>
     );
   }

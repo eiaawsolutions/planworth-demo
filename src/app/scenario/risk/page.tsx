@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { tryLoad } from "@/lib/load";
 import { scenarioBySlug } from "@/lib/scenarios";
 import { scoreClient, TOTAL_WEIGHT, type RiskBand } from "@/lib/sim/risk";
 import { formatMyr, formatMyrDelta } from "@/lib/money";
 import { ScenarioShell, Panel } from "@/components/scenario-shell";
+import { DataUnavailable } from "@/components/data-unavailable";
 import { FactorBar, GoldRule, Pill, ScoreRing, type PillTone } from "@/components/atoms";
 
 export const metadata: Metadata = {
@@ -40,20 +42,27 @@ export default async function RiskPage({
 
   const { client: selectedId } = await searchParams;
 
-  const clients = await prisma.client.findMany({
-    where: { creditHistory: { isNot: null } },
-    include: { creditHistory: true },
-    orderBy: { name: "asc" },
-  });
+  const loaded = await tryLoad(() =>
+    prisma.client.findMany({
+      where: { creditHistory: { isNot: null } },
+      include: { creditHistory: true },
+      orderBy: { name: "asc" },
+    }),
+  );
 
+  if (!loaded.ok) {
+    return (
+      <ScenarioShell scenario={scenario}>
+        <DataUnavailable reason="unreachable" what="the observed repayment history it scores" />
+      </ScenarioShell>
+    );
+  }
+
+  const clients = loaded.data;
   if (clients.length === 0) {
     return (
       <ScenarioShell scenario={scenario}>
-        <Panel>
-          <p className="text-[14px] text-muted">
-            No seeded credit history found. Run <code>npm run db:seed</code>.
-          </p>
-        </Panel>
+        <DataUnavailable reason="empty" what="no client repayment history" />
       </ScenarioShell>
     );
   }

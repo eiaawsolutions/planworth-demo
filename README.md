@@ -146,9 +146,13 @@ src/
     page.tsx                    overview — slides 1, 2, 3, 11, 13
     architecture/               slide 12, plus what this demo does NOT have
     scenario/<slug>/            one page per scenario
+    error.tsx                   last-resort boundary (no stack traces on screen)
     api/concierge/route.ts      scenario 2 — SSE stream
     api/extract/route.ts        scenario 3 — vision + structured output
+    api/audit/route.ts          read-only audit rows, scoped to one session
+    api/health/route.ts         Railway healthcheck + "app or environment?"
   lib/
+    load.ts                    tryLoad() — a dead DB degrades, never blank-pages
     scenarios.ts               the five scenarios as data, incl. real/simulated
     products.ts                the 16-product catalogue (ONE source of truth:
                                seed, UI and prompt grounding all read it)
@@ -187,7 +191,19 @@ very tokens and asserts it.
   specifically to keep that path tested.
 - **Audit before inference.** Both live routes write an `AuditEntry` *before* a
   token is generated. If the audit write fails the model is not called — an
-  unlogged invocation is worse than a failed one here.
+  unlogged invocation is worse than a failed one here. `/api/audit` then makes
+  those rows readable, **scoped to one session and required to be**: this app is
+  unauthenticated and shared by link, so an unfiltered endpoint would let any
+  visitor enumerate every other visitor's session. Digests only — the rows never
+  contained prompt or reply text.
+- **A dead database degrades; it never blank-pages.** The four DB-backed scenario
+  pages wrap their reads in `tryLoad()` and render a composed panel instead of
+  throwing. Verified by actually stopping the database: all four returned 200 with
+  the panel, `/api/health` returned 503, and the three pages that need no database
+  were unaffected.
+- **No developer instructions in client-facing copy.** Nobody in the room has a
+  terminal, so an empty environment explains itself in plain language rather than
+  telling a CTO to run a seed script.
 
 ---
 
@@ -211,6 +227,13 @@ Railway, Nixpacks. `railway.json` holds the build and start commands;
 `npm ci` because the lockfile is authored on Windows and omits Linux-only optional
 native dependencies that Tailwind's oxide pulls in. Removing that file will break
 the build on Railway.
+
+`healthcheckPath` points at `/api/health`, which returns 200 while the database
+answers and 503 when it does not. Note what it deliberately does **not** treat as
+unhealthy: a missing `ANTHROPIC_API_KEY`. The three simulated scenarios work
+without one and the two live ones say so honestly, so the process is fine and
+Railway should keep it in rotation. It reports capability (`db`, `ai`,
+`secretMode`) and never a configuration value.
 
 Attach the Postgres plugin and reference it as `${{Postgres.DATABASE_URL}}`.
 `npm run start` runs `prisma migrate deploy` before `next start`, so the schema is
@@ -245,6 +268,37 @@ Stated here rather than discovered later. `/architecture` carries the full list.
 - **No visual regression coverage.** Layout was verified structurally (every wide
   element sits inside an `overflow-x-auto` container) but never screenshotted at
   mobile, tablet and desktop widths.
+- **Not deployed.** No Railway project, URL or service name exists yet, so nothing
+  here has run anywhere but localhost. Record all three in this file once it does.
+- **The seed is not run on deploy.** `npm run start` runs `prisma migrate deploy`
+  only. A freshly provisioned environment starts empty — which now degrades
+  gracefully rather than crashing, but still shows nothing until seeded once.
+- **The source deck is not in the repo.** The UI cites slides 5, 6, 8, 10, 11 and
+  12 of `Planworth_Intelligent_Ecosystem.pptx`, which lives outside this directory.
+  A future maintainer cannot check a single citation. Committing a client's deck may
+  not be appropriate, but its path and date should be recorded somewhere.
+- **The lockfile is authored on Windows.** `nixpacks.toml` therefore uses
+  `npm install` rather than `npm ci`, which means the lockfile is not authoritative
+  on Railway's Linux builder: a build that succeeds today could resolve different
+  patch versions later. Survivable for a demo, but it is the one non-deterministic
+  step in the deploy.
+- **No spend cap.** The in-memory rate limiter resets on deploy, so the only real
+  ceiling on a public URL is the Anthropic account's own. Worth a daily cap before
+  the link is shared widely.
+- **Cost constants are hardcoded.** `src/lib/anthropic.ts` carries USD 5/25 per
+  MTok for the display-only cost figure. Harmless, but it will silently drift.
+- **Human-in-the-loop is asserted, not actionable.** The scenarios correctly say
+  nothing is sent and nothing is written to a CRM, but there is no approve / amend /
+  reject control that records a decision into the audit trail. That is the natural
+  next feature, and the audit surface now exists to hold it.
+- **The demo dead-ends.** There is no outbound call to action — no way for a viewer
+  to reach the EIAAW deal owner from inside the app. Deliberately *not* a lead
+  capture form: the EIAAW lead-generation contract requires a server-side
+  verification gate before any prospect is persisted, and this app has none. A
+  `mailto:` or a tagged link out is the whole of the fix.
+- **No presenter walkthrough.** Five scenarios across five routes with only
+  prev/next links means the presenter improvises and a client clicking through
+  alone afterwards has no guided order.
 
 ### One thing to raise with Planworth
 

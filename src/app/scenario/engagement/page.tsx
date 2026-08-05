@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { tryLoad } from "@/lib/load";
 import { scenarioBySlug } from "@/lib/scenarios";
 import { detectFundingGap, type CashflowMonth } from "@/lib/sim/engagement";
 import { formatMyr } from "@/lib/money";
 import { ScenarioShell, Panel } from "@/components/scenario-shell";
 import { ReasoningSteps } from "@/components/reasoning-steps";
+import { DataUnavailable } from "@/components/data-unavailable";
 import { CashflowChart } from "@/components/cashflow-chart";
 import { Pill, GoldRule } from "@/components/atoms";
 
@@ -22,22 +24,29 @@ export default async function EngagementPage() {
   const scenario = scenarioBySlug("engagement");
   if (!scenario) notFound();
 
-  const client = await prisma.client.findFirst({
-    where: { cashflowPoints: { some: {} } },
-    include: {
-      cashflowPoints: { orderBy: { monthIndex: "asc" } },
-      campaigns: { orderBy: { createdAt: "desc" }, take: 1 },
-    },
-  });
+  const loaded = await tryLoad(() =>
+    prisma.client.findFirst({
+      where: { cashflowPoints: { some: {} } },
+      include: {
+        cashflowPoints: { orderBy: { monthIndex: "asc" } },
+        campaigns: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
+    }),
+  );
 
+  if (!loaded.ok) {
+    return (
+      <ScenarioShell scenario={scenario}>
+        <DataUnavailable reason="unreachable" what="a twelve-month cash-flow series" />
+      </ScenarioShell>
+    );
+  }
+
+  const client = loaded.data;
   if (!client) {
     return (
       <ScenarioShell scenario={scenario}>
-        <Panel>
-          <p className="text-[14px] text-muted">
-            No seeded cash-flow series found. Run <code>npm run db:seed</code>.
-          </p>
-        </Panel>
+        <DataUnavailable reason="empty" what="no cash-flow series" />
       </ScenarioShell>
     );
   }

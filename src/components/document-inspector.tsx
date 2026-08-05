@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { GoldRule, Pill, type PillTone } from "./atoms";
+import { AuditTrail } from "./audit-trail";
 
 /**
  * The client half of scenario 3. Sends a fixture to /api/extract and renders the
@@ -44,6 +45,7 @@ interface ExtractResponse {
     documentDateAsPrinted: string;
     totalAmount: string;
     currency: string;
+    issuer: string;
     counterparty: string;
     contractReference: string;
     legibility: "clean" | "degraded" | "partially_illegible";
@@ -85,6 +87,10 @@ const LEGIBILITY: Record<string, { label: string; tone: PillTone }> = {
   partially_illegible: { label: "Partially illegible", tone: "caution" },
 };
 
+function newSessionId() {
+  return `demo-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function DocumentInspector({
   documents,
   configured,
@@ -93,6 +99,9 @@ export function DocumentInspector({
   configured: boolean;
 }) {
   const [selectedId, setSelectedId] = useState(documents[0]?.id ?? "");
+  // Sent with every extraction so the audit rows are attributable to this
+  // browser session, and so the audit panel below can scope its read to them.
+  const [sessionId] = useState(newSessionId);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Record<string, ExtractResponse>>({});
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +117,7 @@ export function DocumentInspector({
       const res = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId: selected.id }),
+        body: JSON.stringify({ documentId: selected.id, sessionId }),
       });
       const payload = await res.json();
       if (!res.ok) {
@@ -126,8 +135,9 @@ export function DocumentInspector({
   if (!selected) {
     return (
       <div className="pw-card rounded-xl p-6">
-        <p className="text-[14px] text-muted">
-          No document fixtures found. Run <code>npm run db:seed</code>.
+        <p className="text-[14px] leading-relaxed text-navy/90">
+          This environment has no demonstration documents loaded, so there is
+          nothing to extract from.
         </p>
       </div>
     );
@@ -380,6 +390,8 @@ export function DocumentInspector({
               </p>
             </div>
           ) : null}
+
+          <AuditTrail sessionId={sessionId} />
         </div>
       </div>
     </div>

@@ -32,8 +32,14 @@ import { clientKey, rateLimit } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Extraction is the expensive call on this app; keep the ceiling tight. */
-const RATE_LIMIT = 8;
+/**
+ * Extraction is the expensive call on this app, but the ceiling has to survive a
+ * live session: a presenter and several client laptops behind one office NAT all
+ * share a bucket keyed on the first x-forwarded-for hop, and there are five
+ * fixtures to walk through plus re-runs. 8/min hit the limit on stage; 24 leaves
+ * room without being an open door.
+ */
+const RATE_LIMIT = 24;
 const RATE_WINDOW_SECONDS = 60;
 
 function digest(input: string): string {

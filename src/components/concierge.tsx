@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Pill, GoldRule } from "./atoms";
+import { AuditTrail } from "./audit-trail";
 
 /**
  * The client half of scenario 2. Consumes the SSE stream from /api/concierge and
@@ -448,10 +449,12 @@ export function Concierge({ configured }: { configured: boolean }) {
             <p className="mt-3 text-[11.5px] leading-relaxed text-muted-soft">
               Every call is written to an append-only audit row with the prompt
               version, token counts, latency and cost — the trail an approval
-              workflow needs.
+              workflow needs. Read them below rather than taking that on trust.
             </p>
           </div>
         ) : null}
+
+        <AuditTrail sessionId={sessionId} />
       </div>
     </div>
   );
